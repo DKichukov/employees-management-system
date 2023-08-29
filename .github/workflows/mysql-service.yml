@@ -1,0 +1,16 @@
+name: MySQL Service
+
+on: push
+
+jobs:
+  setup-mysql:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:latest
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: employees_management_system
+        ports:
+          - 3306:3306
