@@ -10,6 +10,16 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    services:
+      mysql:
+        image: mysql:latest
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: employees_management_system
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping"
+
     steps:
       - uses: actions/checkout@v3
       - name: Set up JDK 17
