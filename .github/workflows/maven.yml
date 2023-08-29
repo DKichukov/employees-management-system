@@ -28,6 +28,7 @@ jobs:
           java-version: '17'
 
       - name: Set up database credentials
+        run:
         env:
           SPRING_DATASOURCE_USERNAME: ${{ secrets.SPRING_DATASOURCE_USERNAME }}
           SPRING_DATASOURCE_PASSWORD: ${{ secrets.SPRING_DATASOURCE_PASSWORD }}
