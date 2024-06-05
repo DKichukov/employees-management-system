@@ -1,9 +1,5 @@
-FROM xldevops/jdk17-alpine
+FROM openjdk:17
 EXPOSE 8080
-ARG JAR_FILE=/target/*.jar
+ARG JAR_FILE=target/ems-app.jar
 COPY ${JAR_FILE} application.jar
-ENTRYPOINT [ "sh", "-c", "java -jar application.jar" ]
-
-#ENTRYPOINT ["java","-jar","/app.jar"]
-
-#CMD ["java","-jar","app.jar"]
+ENTRYPOINT ["java", "-jar" ,"/application.jar" ]

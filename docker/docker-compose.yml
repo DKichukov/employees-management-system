@@ -1,12 +1,12 @@
 services:
   mysql-db:
-    image: mysql:5.7
-    container_name: mysql-container
+    image: mysql:8.0
+    container_name: mysql-db
     environment:
-      MYSQL_ROOT_PASSWORD: Mysql@1234
-      MYSQL_USER: mysql_root
-      MYSQL_PASSWORD: Mysql@1234
-      MYSQL_DATABASE: employees_management_system
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
     ports:
       - "3306:3306"
     volumes:
@@ -15,23 +15,24 @@ services:
       - ems-app-network
 
   employees-management-system:
-    container_name: ems-app-container
+    container_name: ems-app
     build:
       context: ../
       dockerfile: Dockerfile
-    image: ems-app-container
+    image: ems-app
     ports:
       - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-db:3306/${MYSQL_DATABASE}
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
     depends_on:
       - mysql-db
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-db:3306/employees_management_system
-      SPRING_DATASOURCE_USERNAME: mysql_root
-      SPRING_DATASOURCE_PASSWORD: Mysql@1234
     networks:
       - ems-app-network
-      
+
 volumes:
   mysql-data:
+
 networks:
   ems-app-network:
