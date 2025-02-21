@@ -1,15 +1,31 @@
-version: '3.8'
-
 services:
-  mysql-db:
-    image: mysql:latest
+  postgres:
+    image: postgres:13-alpine
+    container_name: postgres-db
     ports:
-      - "3306:3306"
+      - "5432:5432"
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: employees_management_system
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: employees_management_system
     volumes:
-      - mysql-data:/var/lib/mysql
+      - postgres-data:/var/lib/postgresql/data
+
+  app:
+    container_name: ems
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/employees_management_system
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+    depends_on:
+      - postgres
 
 volumes:
-  mysql-data:
+  postgres-data:

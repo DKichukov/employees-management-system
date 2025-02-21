@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS employees (
+    id SERIAL PRIMARY KEY,
+    first_name VARCHAR(60) NOT NULL,
+    last_name VARCHAR(60) NOT NULL,
+    email VARCHAR(120) UNIQUE NOT NULL
+);
