@@ -12,4 +12,6 @@ FROM eclipse-temurin:17-jre-alpine AS production
 WORKDIR /app
 COPY --from=build /app/target/*.jar ./app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java","-XX:+UseSerialGC", "-XX:MaxRAMPercentage=50", "-jar", "app.jar"]
+# "-XX:MaxRAMPercentage=50" - JVM default value is 25%
+# "-XX:+UseSerialGC" for JDK 17+ default is G1GC, that consumes more memory than SerialGC
