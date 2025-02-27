@@ -1,7 +1,7 @@
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: postgres-db
+    image: postgres:13-alpine
+    container_name: ems-db
     ports:
       - "5432:5432"
     environment:
@@ -12,7 +12,8 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   app:
-    container_name: ems
+    image: djimy87/ems-app:v1
+    container_name: ems-app
     build:
       context: .
       dockerfile: Dockerfile

@@ -1,0 +1,11 @@
+# spring-boot-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spring-boot-config
+data:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/employees_management_system
+  SPRING_JPA_HIBERNATE_DDL_AUTO: update
+  SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+  LOGGING_LEVEL_ORG_HIBERNATE_SQL: DEBUG
+  LOGGING_LEVEL_ORG_HIBERNATE_TYPE: trace
