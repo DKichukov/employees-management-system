@@ -3,16 +3,17 @@ version: 0.2
 phases:
   install:
     commands:
-      - echo "Installing required packages"
-      - yum install -y jq  # Needed for JSON parsing
+      - echo "Installing dependencies..."
+      - yum install -y jq
+      - echo "Disabling BuildKit"
+      - export DOCKER_BUILDKIT=0
 
   pre_build:
     commands:
-      - echo "Setting up environment"
-      - export REPOSITORY_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}
+      - echo "Setting ECR repository URI"
+      - export REPOSITORY_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME_APP}
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
-
       - echo "Logging in to ECR..."
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $REPOSITORY_URI
 
@@ -28,20 +29,42 @@ phases:
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - docker push $REPOSITORY_URI:latest
 
-      - echo "Creating deployment artifacts..."
+      - echo "Generating deployment artifacts..."
       - mkdir -p scripts
       - |
         cat > imageDefinitions.json << EOL
         [
           {
-            "name": "${IMAGE_REPO_NAME}",
+            "name": "${IMAGE_REPO_NAME_APP}",
             "imageUri": "${REPOSITORY_URI}:${IMAGE_TAG}"
           }
         ]
         EOL
+      - |
+        cat > appspec.yml << EOL
+        version: 0.0
+        os: linux
+        files:
+          - source: /
+            destination: /home/ec2-user/employee-management-system
+        hooks:
+          BeforeInstall:
+            - location: scripts/before_install.sh
+              timeout: 300
+              runas: root
+          AfterInstall:
+            - location: scripts/after_install.sh
+              timeout: 300
+              runas: root
+          ApplicationStart:
+            - location: scripts/application_start.sh
+              timeout: 300
+              runas: root
+        EOL
+      - chmod +x scripts/*.sh
 
 artifacts:
   files:
-    - imageDefinitions.json
     - appspec.yml
+    - imageDefinitions.json
     - scripts/**/*
