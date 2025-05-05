@@ -1,15 +1,27 @@
 #!/bin/bash
 echo "Starting application..."
-cd /home/ec2-user/employee-management-system
+cd /home/ec2-user/employee-management-system || exit 1
 
-# Get the ECR repository URI
+# Get AWS region from instance metadata
 AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Get ECR repository URI from environment variables (set by CodeDeploy)
+ECR_REPOSITORY_URI=${ECR_REPOSITORY_URI}
+if [ -z "$ECR_REPOSITORY_URI" ]; then
+    echo "ERROR: ECR_REPOSITORY_URI environment variable not set"
+    exit 1
+fi
 
 # Login to ECR
-aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPOSITORY_URI" || {
+    echo "ERROR: Failed to login to ECR"
+    exit 1
+}
 
-# Start the containers using docker-compose
-docker-compose -f docker-compose.prod.yml up -d
+# Start the containers
+docker compose -f docker-compose.yml up -d || {
+    echo "ERROR: Failed to start containers"
+    exit 1
+}
 
 echo "Application started successfully"
