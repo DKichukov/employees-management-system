@@ -5,8 +5,9 @@ phases:
     commands:
       - echo "Installing dependencies..."
       - yum install -y jq
-      - echo "Disabling BuildKit"
-      - export DOCKER_BUILDKIT=0
+      # Commented out to keep BuildKit enabled
+      # - echo "Disabling BuildKit"
+      # - export DOCKER_BUILDKIT=0
 
   pre_build:
     commands:
@@ -45,7 +46,7 @@ phases:
         version: 0.0
         os: linux
         files:
-          - source: /
+          - source: / 
             destination: /home/ec2-user/employee-management-system
         hooks:
           BeforeInstall:
