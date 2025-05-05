@@ -1,29 +1,48 @@
 version: 0.2
 
 phases:
+  install:
+    commands:
+      - echo "Enabling Docker BuildKit"
+      - export DOCKER_BUILDKIT=1
+
   pre_build:
     commands:
-      - echo Logging in to Amazon ECR...
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - echo "Preparing build environment..."
+      - mkdir -p scripts
+
   build:
     commands:
-      - echo Build started on `date`
-      - echo Building the Docker image...
-      - docker build -t $ECR_REPOSITORY_URI:latest .
+      - echo "Build started on $(date)"
+      - echo "Building Docker image without BuildKit-specific features..."
+      - docker build --no-cache -t $ECR_REPOSITORY_URI:latest .
       - docker tag $ECR_REPOSITORY_URI:latest $ECR_REPOSITORY_URI:$IMAGE_TAG
+
   post_build:
     commands:
-      - echo Build completed on `date`
-      - echo Pushing the Docker image...
+      - echo "Build completed on $(date)"
+      - echo "Pushing Docker images..."
       - docker push $ECR_REPOSITORY_URI:latest
       - docker push $ECR_REPOSITORY_URI:$IMAGE_TAG
-      - echo Writing image definitions file...
-      - echo "{\"ImageURI\":\"$ECR_REPOSITORY_URI:$IMAGE_TAG\"}" > imageDefinitions.json
-      - echo Creating appspec.yml...
+
+      # Generate deployment artifacts
+      - echo "Creating deployment artifacts..."
       - |
-        cat > appspec.yml << 'EOL'
+        cat > imageDefinitions.json << EOL
+        [
+          {
+            "name": "${APP_NAME}-container",
+            "imageUri": "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
+          }
+        ]
+        EOL
+
+      - |
+        cat > appspec.yml << EOL
         version: 0.0
         os: linux
         files:
@@ -36,7 +55,7 @@ phases:
               runas: root
           AfterInstall:
             - location: scripts/after_install.sh
-              timeout: 600
+              timeout: 300
               runas: root
           ApplicationStart:
             - location: scripts/application_start.sh
@@ -47,93 +66,66 @@ phases:
               timeout: 300
               runas: root
         EOL
-      - mkdir -p scripts
+
+      # Create scripts
       - |
-        cat > scripts/before_install.sh << 'EOL'
+        cat > scripts/before_install.sh << EOL
         #!/bin/bash
-        # Stop any running containers
-        if [ "$(docker ps -q)" ]; then
-          docker stop $(docker ps -q)
-        fi
-        
-        # Remove old application files if they exist
+        echo "Running before install hook"
+        docker ps -aq | xargs -r docker stop | xargs -r docker rm || true
         rm -rf /home/ec2-user/employee-management-system/*
-        
-        # Make sure the directory exists
         mkdir -p /home/ec2-user/employee-management-system
         EOL
+
       - |
-        cat > scripts/after_install.sh << 'EOL'
+        cat > scripts/after_install.sh << EOL
         #!/bin/bash
-        # Navigate to the application directory
+        echo "Running after install hook"
         cd /home/ec2-user/employee-management-system
-        
-        # Create docker-compose.yml file
-        cat > docker-compose.yml << 'EOF'
-        version: '3'
+        echo "Writing docker-compose.yml"
+        cat > docker-compose.yml << EOF
+        version: '3.8'
         services:
           app:
-            image: ${ECR_REPOSITORY_URI}:latest
+            image: ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
             ports:
               - "8080:8080"
-            environment:
-              - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/employeedb
-              - SPRING_DATASOURCE_USERNAME=postgres
-              - SPRING_DATASOURCE_PASSWORD=postgres
             depends_on:
               - db
-        
           db:
             image: postgres:13
-            ports:
-              - "5432:5432"
             environment:
-              - POSTGRES_USER=postgres
-              - POSTGRES_PASSWORD=postgres
-              - POSTGRES_DB=employeedb
+              POSTGRES_USER: postgres
+              POSTGRES_PASSWORD: postgres
+              POSTGRES_DB: employeedb
             volumes:
-              - postgres-data:/var/lib/postgresql/data
-        
+              - pgdata:/var/lib/postgresql/data
         volumes:
-          postgres-data:
+          pgdata:
         EOF
-        
-        # Set permissions
-        chmod +x /home/ec2-user/employee-management-system/docker-compose.yml
         EOL
+
       - |
-        cat > scripts/application_start.sh << 'EOL'
+        cat > scripts/application_start.sh << EOL
         #!/bin/bash
-        # Navigate to app directory
+        echo "Starting application"
         cd /home/ec2-user/employee-management-system
-        
-        # Pull the latest image
-        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REPOSITORY_URI}
-        
-        # Start the application with docker-compose
         docker-compose up -d
         EOL
+
       - |
-        cat > scripts/application_stop.sh << 'EOL'
+        cat > scripts/application_stop.sh << EOL
         #!/bin/bash
-        # Navigate to app directory
+        echo "Stopping application"
         cd /home/ec2-user/employee-management-system
-        
-        # Stop the running containers if docker-compose.yml exists
-        if [ -f docker-compose.yml ]; then
-          docker-compose down
-        fi
-        
-        # Remove unused Docker resources
-        docker system prune -f
+        docker-compose down || true
         EOL
-      - chmod +x scripts/before_install.sh scripts/after_install.sh scripts/application_start.sh scripts/application_stop.sh
+
+      - chmod +x scripts/*.sh
 
 artifacts:
   files:
     - appspec.yml
-    - scripts/before_install.sh
-    - scripts/after_install.sh
-    - scripts/application_start.sh
-    - scripts/application_stop.sh
     - imageDefinitions.json
+    - scripts/**/*
+  name: deployment-artifacts-$(date +%Y%m%d%H%M%S)

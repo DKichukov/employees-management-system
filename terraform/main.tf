@@ -6,7 +6,7 @@ provider "random" {}
 
 # Create ECR Repository for the application
 resource "aws_ecr_repository" "app_ecr_repo" {
-  name = "${var.app_name}-${var.environment}"
+  name = var.app_name
 }
 
 # Create VPC
@@ -16,7 +16,7 @@ resource "aws_vpc" "app_vpc" {
   enable_dns_support   = true
 
   tags = {
-    Name = "${var.app_name}-${var.environment}-vpc"
+    Name = "${var.app_name}-vpc"
   }
 }
 
@@ -28,7 +28,7 @@ resource "aws_subnet" "app_subnet" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.app_name}-${var.environment}-subnet"
+    Name = "${var.app_name}-subnet"
   }
 }
 
@@ -37,7 +37,7 @@ resource "aws_internet_gateway" "app_igw" {
   vpc_id = aws_vpc.app_vpc.id
 
   tags = {
-    Name = "${var.app_name}-${var.environment}-igw"
+    Name = "${var.app_name}-igw"
   }
 }
 
@@ -51,7 +51,7 @@ resource "aws_route_table" "app_rtb" {
   }
 
   tags = {
-    Name = "${var.app_name}-${var.environment}-rtb"
+    Name = "${var.app_name}-rtb"
   }
 }
 
@@ -63,7 +63,7 @@ resource "aws_route_table_association" "app_rtb_assoc" {
 
 # Create Security Group allowing SSH, HTTP and PostgreSQL
 resource "aws_security_group" "app_sg" {
-  name        = "${var.app_name}-${var.environment}-sg"
+  name        = "${var.app_name}-sg"
   description = "Security group for ${var.app_name} application"
   vpc_id      = aws_vpc.app_vpc.id
 
@@ -100,13 +100,13 @@ resource "aws_security_group" "app_sg" {
   }
 
   tags = {
-    Name = "${var.app_name}-${var.environment}-sg"
+    Name = "${var.app_name}-sg"
   }
 }
 
 # Create IAM Role for EC2
 resource "aws_iam_role" "ec2_role" {
-  name = "${var.app_name}-${var.environment}-ec2-role"
+  name = "${var.app_name}-ec2-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -135,13 +135,13 @@ resource "aws_iam_role_policy_attachment" "ec2_ssm_policy" {
 
 # Create EC2 Instance Profile
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "${var.app_name}-${var.environment}-ec2-profile"
+  name = "${var.app_name}-ec2-profile"
   role = aws_iam_role.ec2_role.name
 }
 
 # Create IAM Role for CodeBuild
 resource "aws_iam_role" "codebuild_role" {
-  name = "${var.app_name}-${var.environment}-codebuild-role"
+  name = "${var.app_name}-codebuild-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -170,7 +170,7 @@ resource "aws_iam_role_policy_attachment" "codebuild_s3_policy" {
 
 # Create IAM Role for CodeDeploy
 resource "aws_iam_role" "codedeploy_role" {
-  name = "${var.app_name}-${var.environment}-codedeploy-role"
+  name = "${var.app_name}-codedeploy-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -232,20 +232,20 @@ resource "aws_instance" "app_instance" {
               EOF
 
   tags = {
-    Name = "${var.app_name}-${var.environment}-instance"
+    Name            = "${var.app_name}-instance"
     DeploymentGroup = "true"
   }
 }
 
 # Create CodeDeploy Application
 resource "aws_codedeploy_app" "app" {
-  name = "${var.app_name}-${var.environment}"
+  name = var.app_name
 }
 
 # Create CodeDeploy Deployment Group
 resource "aws_codedeploy_deployment_group" "app_deployment_group" {
   app_name              = aws_codedeploy_app.app.name
-  deployment_group_name = "${var.app_name}-${var.environment}-deployment-group"
+  deployment_group_name = "${var.app_name}-deployment-group"
   service_role_arn      = aws_iam_role.codedeploy_role.arn
 
   ec2_tag_set {
@@ -268,7 +268,7 @@ resource "aws_codedeploy_deployment_group" "app_deployment_group" {
 }
 
 resource "aws_iam_role" "codebuild_service_role" {
-  name = "${var.app_name}-${var.environment}-codebuild-service-role"
+  name = "${var.app_name}-codebuild-service-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -286,7 +286,7 @@ resource "aws_iam_role" "codebuild_service_role" {
 
 # Create more permissions for CodeBuild to use GitHub
 resource "aws_iam_role_policy" "codebuild_github_policy" {
-  name = "${var.app_name}-${var.environment}-codebuild-github-policy"
+  name = "${var.app_name}-codebuild-github-policy"
   role = aws_iam_role.codebuild_service_role.id
 
   policy = jsonencode({
@@ -303,32 +303,79 @@ resource "aws_iam_role_policy" "codebuild_github_policy" {
       },
       {
         Action = [
-          "s3:*",
-          "ecr:*",
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:GetBucketAcl",
+          "s3:GetBucketLocation"
+        ]
+        Effect   = "Allow"
+        Resource = [
+          aws_s3_bucket.artifact_bucket.arn,
+          "${aws_s3_bucket.artifact_bucket.arn}/*"
+        ]
+      },
+      {
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      },
+      {
+        Action = [
           "codebuild:*"
         ]
         Effect   = "Allow"
         Resource = "*"
+      },
+      {
+        Action = [
+          "codestar-connections:UseConnection"
+        ]
+        Effect   = "Allow"
+        Resource = aws_codestarconnections_connection.github.arn
       }
     ]
   })
 }
 
+# resource "aws_secretsmanager_secret" "github_token" {
+#   name = "${var.app_name}-github-token-1"
+# }
+
+# resource "aws_secretsmanager_secret_version" "github_token" {
+#   secret_id     = aws_secretsmanager_secret.github_token.id
+#   secret_string = var.github_token
+# }
+
+# Create connection to GitHub
+resource "aws_codestarconnections_connection" "github" {
+  name          = "${var.app_name}-github-connection"
+  provider_type = "GitHub"
+}
+
 # Create CodeBuild Project (using GitHub as source)
 resource "aws_codebuild_project" "app_build" {
   name         = "${var.app_name}-build"
-  description  = "CodeBuild project for ${var.app_name}"
   service_role = aws_iam_role.codebuild_service_role.arn
 
   source {
     type            = "GITHUB"
     location        = var.repo_url
-    buildspec       = "buildspec.yml"
     git_clone_depth = 1
+    buildspec       = "buildspec.yml"
 
     auth {
-      type     = "OAUTH"
-      resource = var.github_oauth_token
+      type     = "CODECONNECTIONS"
+      resource = aws_codestarconnections_connection.github.arn
     }
   }
 
@@ -351,6 +398,11 @@ resource "aws_codebuild_project" "app_build" {
       name  = "AWS_DEFAULT_REGION"
       value = var.aws_region
     }
+
+    environment_variable {
+      name  = "IMAGE_REPO_NAME_APP"
+      value = aws_ecr_repository.app_ecr_repo.name
+    }
   }
 }
 
@@ -363,7 +415,7 @@ resource "random_id" "bucket_suffix" {
 
 # Create S3 Bucket for CodePipeline artifacts
 resource "aws_s3_bucket" "artifact_bucket" {
-  bucket = "${var.app_name}-${var.environment}-artifacts-${random_id.bucket_suffix.hex}"
+  bucket = "${var.app_name}-artifacts-${random_id.bucket_suffix.hex}"
 }
 
 resource "aws_s3_bucket_ownership_controls" "artifact_bucket_ownership" {
@@ -375,13 +427,51 @@ resource "aws_s3_bucket_ownership_controls" "artifact_bucket_ownership" {
 
 resource "aws_s3_bucket_acl" "artifact_bucket_acl" {
   depends_on = [aws_s3_bucket_ownership_controls.artifact_bucket_ownership]
-  bucket = aws_s3_bucket.artifact_bucket.id
-  acl    = "private"
+  bucket     = aws_s3_bucket.artifact_bucket.id
+  acl        = "private"
 }
+
+resource "aws_iam_role_policy" "codebuild_codestar_policy" {
+  name = "${var.app_name}-codebuild-codestar-policy"
+  role = aws_iam_role.codebuild_service_role.name
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect   = "Allow",
+         Action = [
+                  "codestar-connections:UseConnection",
+                  "codestar-connections:GetConnection"
+                ],
+        Resource = aws_codestarconnections_connection.github.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "codebuild_codestar_attachment" {
+  role       = aws_iam_role.codebuild_service_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess"
+}
+
+# resource "aws_iam_role_policy" "codebuild_secrets_policy" {
+#   name = "${var.app_name}-codebuild-secrets-policy"
+#   role = aws_iam_role.codebuild_service_role.name
+#
+#   policy = jsonencode({
+#     Version = "2012-10-17",
+#     Statement = [{
+#       Action   = ["secretsmanager:GetSecretValue"],
+#       Effect   = "Allow",
+#       Resource = aws_secretsmanager_secret.github_token.arn
+#     }]
+#   })
+# }
 
 # Create IAM Role for CodePipeline
 resource "aws_iam_role" "codepipeline_role" {
-  name = "${var.app_name}-${var.environment}-codepipeline-role"
+  name = "${var.app_name}-codepipeline-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -399,7 +489,7 @@ resource "aws_iam_role" "codepipeline_role" {
 
 # Attach policies to CodePipeline role
 resource "aws_iam_role_policy" "codepipeline_policy" {
-  name = "${var.app_name}-${var.environment}-codepipeline-policy"
+  name = "${var.app_name}-codepipeline-policy"
   role = aws_iam_role.codepipeline_role.id
 
   policy = jsonencode({
@@ -425,15 +515,9 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
   })
 }
 
-# Create connection to GitHub
-resource "aws_codestarconnections_connection" "github" {
-  name          = "${var.app_name}-${var.environment}-github-connection"
-  provider_type = "GitHub"
-}
-
 # Create CodePipeline with GitHub as source
 resource "aws_codepipeline" "app_pipeline" {
-  name     = "${var.app_name}-${var.environment}-pipeline"
+  name     = "${var.app_name}-pipeline"
   role_arn = aws_iam_role.codepipeline_role.arn
 
   artifact_store {

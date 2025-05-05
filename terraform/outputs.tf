@@ -18,10 +18,10 @@ output "application_url" {
   value       = "http://${aws_instance.app_instance.public_dns}:8080"
 }
 
-output "github_connection_status" {
-  description = "Status of the GitHub connection (requires manual approval in the AWS console)"
-  value       = aws_codestarconnections_connection.github.status
-}
+# output "github_connection_status" {
+#   description = "Status of the GitHub connection (requires manual approval in the AWS console)"
+#   value       = aws_codestarconnections_connection.github.status
+# }
 
 output "github_connection_arn" {
   description = "ARN of the GitHub connection"

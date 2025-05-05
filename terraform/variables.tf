@@ -35,12 +35,12 @@ variable "subnet_cidr" {
 }
 
 variable "repo_url" {
+  description = "GitHub repository URL"
   type        = string
-  description = "The location of the GitHub repo."
 }
 
-variable "github_oauth_token" {
-  description = "GitHub OAuth token for CodePipeline access"
+variable "github_token" {
+  description = "GitHub OAuth token"
   type        = string
   sensitive   = true
 }

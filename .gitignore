@@ -36,3 +36,4 @@ build/
 terraform/.terraform/
 terraform/.terraform.lock.hcl
 terraform/*.pem
+terraform/*.tfvars
