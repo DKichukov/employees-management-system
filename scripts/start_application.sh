@@ -1,27 +1,22 @@
 #!/bin/bash
-echo "Starting application..."
-cd /home/ec2-user/employee-management-system || exit 1
 
-# Get AWS region from instance metadata
-AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+# Set AWS region (replace 'us-east-1' with your region)
+export AWS_REGION=us-east-1
 
-# Get ECR repository URI from environment variables (set by CodeDeploy)
-ECR_REPOSITORY_URI=${ECR_REPOSITORY_URI}
+# Ensure required environment variables are set
 if [ -z "$ECR_REPOSITORY_URI" ]; then
-    echo "ERROR: ECR_REPOSITORY_URI environment variable not set"
+    echo "Error: ECR_REPOSITORY_URI is not set!" >&2
     exit 1
 fi
 
-# Login to ECR
-aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPOSITORY_URI" || {
-    echo "ERROR: Failed to login to ECR"
-    exit 1
-}
+# Login to AWS ECR (non-interactive)
+aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPOSITORY_URI
 
-# Start the containers
-docker compose -f docker-compose.yml up -d || {
-    echo "ERROR: Failed to start containers"
-    exit 1
-}
+# Navigate to your application directory (if needed)
+cd /home/ec2-user/employee-management-system
 
-echo "Application started successfully"
+# Remove the 'version' line from docker-compose.yml (if it exists)
+sed -i '/^version:/d' docker-compose.yml
+
+# Start Docker containers
+docker-compose -f docker-compose.yml up -d
