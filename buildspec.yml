@@ -3,25 +3,25 @@ version: 0.2
 phases:
   install:
     commands:
-      - echo "Enabling Docker BuildKit"
-      - export DOCKER_BUILDKIT=1
+      - echo "Disabling BuildKit for compatibility"
+      - export DOCKER_BUILDKIT=0
 
   pre_build:
     commands:
-      - echo "Logging in to Amazon ECR..."
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - echo "Logging in to ECR..."
+      - aws ecr get-login-password | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
 
   build:
     commands:
-      - echo "Build started on $(date)"
-      - docker build --progress=plain -t $ECR_REPOSITORY_URI:latest .
-      - docker tag $ECR_REPOSITORY_URI:latest $ECR_REPOSITORY_URI:$IMAGE_TAG
+      - echo "Building Docker image..."
+      - docker build -t ${ECR_REPOSITORY_URI}:latest .
+      - docker tag ${ECR_REPOSITORY_URI}:latest ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
 
   post_build:
     commands:
-      - echo "Build completed on $(date)"
-      - docker push $ECR_REPOSITORY_URI:latest
-      - docker push $ECR_REPOSITORY_URI:$IMAGE_TAG
-      - echo "{\"ImageURI\":\"$ECR_REPOSITORY_URI:$IMAGE_TAG\"}" > imageDefinitions.json
+      - echo "Pushing images..."
+      - docker push ${ECR_REPOSITORY_URI}:latest
+      - docker push ${ECR_REPOSITORY_URI}:${IMAGE_TAG}
+      - echo "{\"ImageURI\":\"${ECR_REPOSITORY_URI}:${IMAGE_TAG}\"}" > imageDefinitions.json
