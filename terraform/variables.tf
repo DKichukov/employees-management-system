@@ -1,0 +1,52 @@
+variable "aws_region" {
+  description = "AWS region to deploy resources"
+  type        = string
+  default     = "eu-central-1"
+}
+
+variable "app_name" {
+  description = "Name of the application"
+  default     = "ems-app"
+}
+
+variable "environment" {
+  description = "Deployment environment"
+  default     = "dev"
+}
+
+variable "instance_type" {
+  description = "EC2 instance type"
+  default     = "t2.micro"
+}
+
+variable "ssh_key_name" {
+  description = "SSH key name for EC2 instance"
+  default     = "my-key-pair"
+}
+
+variable "vpc_cidr" {
+  description = "CIDR block for VPC"
+  default     = "10.0.0.0/16"
+}
+
+variable "subnet_cidr" {
+  description = "CIDR block for subnet"
+  default     = "10.0.1.0/24"
+}
+
+variable "repo_url" {
+  type        = string
+  description = "The location of the GitHub repo."
+}
+
+variable "github_oauth_token" {
+  description = "GitHub OAuth token for CodePipeline access"
+  type        = string
+  sensitive   = true
+}
+
+variable "github_branch" {
+  description = "The GitHub branch to use for the pipeline source"
+  type        = string
+  default     = "master"
+}

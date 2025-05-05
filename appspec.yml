@@ -1,0 +1,18 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /home/ec2-user/employees-management-system
+hooks:
+  BeforeInstall:
+    - location: scripts/install_dependencies.sh
+      timeout: 300
+      runas: root
+  ApplicationStop:
+    - location: scripts/stop_application.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: scripts/start_application.sh
+      timeout: 300
+      runas: root
