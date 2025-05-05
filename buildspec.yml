@@ -4,7 +4,7 @@ phases:
   install:
     commands:
       - echo "Installing dependencies..."
-      - yum install -y jq
+      - apk add --no-cache jq
       # Commented out to keep BuildKit enabled
       # - echo "Disabling BuildKit"
       # - export DOCKER_BUILDKIT=0
