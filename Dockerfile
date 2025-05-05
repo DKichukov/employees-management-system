@@ -2,10 +2,12 @@
 FROM maven:3-eclipse-temurin-17-alpine AS build
 WORKDIR /app
 COPY pom.xml .
-RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline
+#RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline
+RUN mvn dependency:go-offline  # Removed --mount flag
 COPY src ./src
-RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests
-RUN rm -rf /root/.m2 /app/src /app/pom.xml
+RUN mvn clean package -DskipTests
+#RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests
+#RUN rm -rf /root/.m2 /app/src /app/pom.xml
 
 # Production stage
 FROM eclipse-temurin:17-jre-alpine AS production
