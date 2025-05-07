@@ -3,69 +3,71 @@ set -e
 
 echo "Starting application..."
 
-# Get instance region from instance metadata
-AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
-if [ -z "$AWS_REGION" ]; then
-    echo "WARNING: Could not determine AWS region from metadata, defaulting to us-east-1"
-    AWS_REGION="us-east-1"
-fi
+# Get instance region with robust error handling
+AWS_REGION=$(curl -s --retry 3 --connect-timeout 1 http://169.254.169.254/latest/meta-data/placement/region || true)
 
-# Validate region
-VALID_REGIONS=("us-east-1" "eu-central-1" "us-west-2") # Add your supported regions
-if [[ ! " ${VALID_REGIONS[@]} " =~ " ${AWS_REGION} " ]]; then
-    echo "ERROR: Unsupported AWS region: ${AWS_REGION}"
-    exit 1
+# Fallback methods
+if [ -z "$AWS_REGION" ]; then
+    AWS_REGION=${AWS_DEFAULT_REGION:-"eu-central-1"}
+    echo "WARNING: Using default region: $AWS_REGION"
 fi
 
 echo "Using AWS Region: $AWS_REGION"
 
-# Try to determine the ECR repository URI
+# Try to determine ECR repository URI
 if [ -z "$ECR_REPOSITORY_URI" ]; then
-    # Get the AWS account ID
-    AWS_ACCOUNT_ID=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | grep -oP '(?<="accountId" : ")[^"]*')
+    # Get AWS account ID from metadata
+    AWS_ACCOUNT_ID=$(curl -s --retry 3 http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .accountId)
 
     if [ -z "$AWS_ACCOUNT_ID" ]; then
-        echo "ERROR: Could not determine AWS account ID from instance metadata"
+        echo "ERROR: Could not determine AWS account ID"
         exit 1
     fi
 
-    REPOSITORY_NAME="ems-app" # Use your exact ECR repository name
+    REPOSITORY_NAME="ems-app"
     ECR_REPOSITORY_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPOSITORY_NAME}"
-
-    # Verify repository exists
-    if ! aws ecr describe-repositories --repository-names "${REPOSITORY_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
-        echo "ERROR: ECR repository ${REPOSITORY_NAME} not found in region ${AWS_REGION}"
-        exit 1
-    fi
+    echo "Determined ECR repository URI: $ECR_REPOSITORY_URI"
 fi
 
 echo "Using ECR repository: $ECR_REPOSITORY_URI"
 
-# Create application directory if it doesn't exist
+# Set application directory
 APP_DIR="/home/ec2-user/employees-management-system"
-mkdir -p "${APP_DIR}"
+mkdir -p "$APP_DIR"
 
-# Create .env file for docker-compose
-cat > "${APP_DIR}/.env" << EOF
-ECR_REPOSITORY_URI=${ECR_REPOSITORY_URI}
+# Create .env file
+cat > "$APP_DIR/.env" << EOF
+ECR_REPOSITORY_URI=$ECR_REPOSITORY_URI
 DB_USER=root
 DB_PASSWORD=root
 DB_NAME=employees_management_system
-AWS_REGION=${AWS_REGION}
+AWS_REGION=$AWS_REGION
 EOF
 
-# Login to AWS ECR
+# Login to ECR with retries
 echo "Logging in to ECR..."
-aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REPOSITORY_URI}"
+for i in {1..3}; do
+    if aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REPOSITORY_URI"; then
+        break
+    fi
+    echo "ECR login attempt $i failed, retrying..."
+    sleep 5
+done
 
-# Navigate to application directory
-cd "${APP_DIR}"
+# Verify login
+if ! grep -q "$ECR_REPOSITORY_URI" /root/.docker/config.json; then
+    echo "ERROR: Failed to login to ECR"
+    exit 1
+fi
+
+# Navigate to app directory
+cd "$APP_DIR"
 
 # Pull latest image
 echo "Pulling latest image from ECR..."
-docker pull "${ECR_REPOSITORY_URI}:latest" || echo "WARNING: Failed to pull image, will attempt to use cached version"
+docker pull "$ECR_REPOSITORY_URI:latest" || echo "WARNING: Failed to pull image, will attempt to use cached version"
 
-# Start Docker containers
+# Start containers
 echo "Starting containers..."
 docker compose -f docker-compose.prod.yml up -d
 
