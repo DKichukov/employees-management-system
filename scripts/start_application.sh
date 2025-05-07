@@ -3,72 +3,62 @@ set -e
 
 echo "Starting application..."
 
-# Hardcode your ECR details to ensure reliability
-HARDCODED_ECR_REPOSITORY_URI="565393040546.dkr.ecr.eu-central-1.amazonaws.com/ems-app"
-HARDCODED_REGION="eu-central-1"
+# Define application directory and create if it doesn't exist
+APP_DIR="/home/ec2-user/employees-management-system"
+mkdir -p "$APP_DIR"
 
-# Try to get instance region with robust error handling
+# Determine AWS region with fallbacks
 AWS_REGION=""
+
+# Attempt to get region from instance metadata with IMDSv2 support
+TOKEN=""
 if command -v curl &>/dev/null; then
-    # Check if IMDSv2 token is required
+    # Try to get IMDSv2 token
     TOKEN=$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null || echo "")
 
     if [ -n "$TOKEN" ]; then
         # Use IMDSv2
         AWS_REGION=$(curl -s -f -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "")
     else
-        # Try IMDSv1 as fallback
+        # Fall back to IMDSv1
         AWS_REGION=$(curl -s -f http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "")
     fi
 fi
 
-# If still empty, try AWS CLI config
+# If region is still empty, check environment variables
 if [ -z "$AWS_REGION" ]; then
-    AWS_REGION=$(aws configure get region 2>/dev/null || echo "")
-fi
-
-# If still empty, use environment variable
-if [ -z "$AWS_REGION" ]; then
-    AWS_REGION=${AWS_DEFAULT_REGION:-$HARDCODED_REGION}
-    echo "WARNING: Using fallback region: $AWS_REGION"
+    AWS_REGION=${AWS_DEFAULT_REGION:-eu-central-1}
 fi
 
 echo "Using AWS Region: $AWS_REGION"
 
-# Set ECR repository URI
+# Get AWS account ID
+AWS_ACCOUNT_ID=""
+if [ -n "$TOKEN" ]; then
+    # Try IMDSv2
+    AWS_ACCOUNT_ID=$(curl -s -f -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document 2>/dev/null | grep -o '"accountId" : "[^"]*' | cut -d'"' -f4 || echo "")
+fi
+
+# If account ID is still empty, try AWS CLI
+if [ -z "$AWS_ACCOUNT_ID" ]; then
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+fi
+
+# Determine ECR repository URI
 if [ -z "$ECR_REPOSITORY_URI" ]; then
-    # First try to build it dynamically
-    AWS_ACCOUNT_ID=""
-
-    # Try to get account ID using IMDSv2 if token exists
-    if [ -n "$TOKEN" ]; then
-        AWS_ACCOUNT_ID=$(curl -s -f -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document 2>/dev/null | grep -o '"accountId" : "[^"]*' | cut -d'"' -f4 || echo "")
-    fi
-
-    # If account ID is still empty, try AWS CLI
-    if [ -z "$AWS_ACCOUNT_ID" ]; then
-        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
-    fi
-
-    # If we have account ID, construct the URI
     if [ -n "$AWS_ACCOUNT_ID" ]; then
-        REPOSITORY_NAME="ems-app"
-        ECR_REPOSITORY_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPOSITORY_NAME}"
-        echo "Dynamically determined ECR repository URI: $ECR_REPOSITORY_URI"
+        # Default app name from your terraform
+        APP_NAME="ems-app"
+        ECR_REPOSITORY_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
     else
-        # Use hardcoded URI as fallback
-        ECR_REPOSITORY_URI="$HARDCODED_ECR_REPOSITORY_URI"
-        echo "Using hardcoded ECR repository URI"
+        echo "ERROR: Could not determine AWS account ID. Set ECR_REPOSITORY_URI manually."
+        exit 1
     fi
 fi
 
 echo "Using ECR repository: $ECR_REPOSITORY_URI"
 
-# Set application directory
-APP_DIR="/home/ec2-user/employees-management-system"
-mkdir -p "$APP_DIR"
-
-# Create .env file
+# Create .env file for docker-compose
 cat > "$APP_DIR/.env" << EOF
 ECR_REPOSITORY_URI=$ECR_REPOSITORY_URI
 DB_USER=root
@@ -77,9 +67,8 @@ DB_NAME=employees_management_system
 AWS_REGION=$AWS_REGION
 EOF
 
-# Create docker-compose file if it doesn't exist
+# Create docker-compose.prod.yml if it doesn't exist
 if [ ! -f "$APP_DIR/docker-compose.prod.yml" ]; then
-    echo "Creating docker-compose.prod.yml file..."
     cat > "$APP_DIR/docker-compose.prod.yml" << 'EOF'
 services:
   postgres:
@@ -116,7 +105,6 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
-      AWS_REGION: ${AWS_REGION}
     restart: unless-stopped
     networks:
       - app-network
@@ -129,26 +117,43 @@ networks:
 EOF
 fi
 
-# Login to ECR with error handling
+# Go to application directory
+cd "$APP_DIR"
+
+# Login to ECR with debug output and retry
 echo "Logging in to ECR..."
 for i in {1..3}; do
-    if aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin $(echo "$ECR_REPOSITORY_URI" | cut -d'/' -f1) 2>/dev/null; then
+    echo "ECR login attempt $i..."
+
+    # Print AWS identity for debugging
+    echo "Current AWS identity:"
+    aws sts get-caller-identity || echo "Failed to get identity"
+
+    # Explicitly set region for AWS CLI
+    export AWS_DEFAULT_REGION="$AWS_REGION"
+
+    if aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$(echo "$ECR_REPOSITORY_URI" | cut -d'/' -f1)"; then
         echo "Successfully logged in to ECR"
         break
-    fi
-
-    if [ $i -eq 3 ]; then
-        echo "WARNING: Failed to log in to ECR after 3 attempts. Continuing anyway..."
     else
-        echo "ECR login attempt $i failed, retrying in 5 seconds..."
+        echo "ECR login attempt $i failed"
+        if [ $i -eq 3 ]; then
+            echo "ERROR: Failed to log in to ECR after multiple attempts."
+            echo "Checking if image already exists locally..."
+
+            if docker image inspect "$ECR_REPOSITORY_URI:latest" &>/dev/null; then
+                echo "Image exists locally, proceeding with deployment"
+                break
+            else
+                echo "ERROR: Image does not exist locally and ECR login failed"
+                exit 1
+            fi
+        fi
         sleep 5
     fi
 done
 
-# Navigate to app directory
-cd "$APP_DIR"
-
-# Pull latest image with error handling
+# Pull latest image
 echo "Pulling latest image from ECR..."
 if docker pull "$ECR_REPOSITORY_URI:latest"; then
     echo "Successfully pulled latest image"
@@ -162,10 +167,11 @@ else
     fi
 fi
 
-# Start containers with error handling
+# Start containers
 echo "Starting containers..."
 if docker compose -f docker-compose.prod.yml up -d; then
     echo "Application started successfully"
+    docker ps
 else
     echo "ERROR: Failed to start containers"
     docker compose -f docker-compose.prod.yml logs
