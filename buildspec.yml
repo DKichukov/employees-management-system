@@ -1,5 +1,9 @@
 version: 0.2
-
+env:
+  variables:
+    AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION
+    ECR_REPOSITORY_URI: $ECR_REPOSITORY_URI
+    AWS_REGION: $AWS_DEFAULT_REGION
 phases:
   pre_build:
     commands:

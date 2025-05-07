@@ -1,6 +1,6 @@
 #!/bin/bash
 echo "Stopping application..."
-cd /home/ec2-user/employee-management-system
+cd /home/ec2-user/employees-management-system
 
 # Stop containers if docker-compose file exists
 if [ -f docker-compose.prod.yml ]; then

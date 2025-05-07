@@ -20,7 +20,7 @@ services:
       - app-network
 
   app:
-    image: ${ECR_REPOSITORY_URI:ems-app}:latest
+    image: ${ECR_REPOSITORY_URI}:latest
     container_name: ems-app
     ports:
       - "8080:8080"

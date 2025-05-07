@@ -155,6 +155,11 @@ resource "aws_iam_role_policy_attachment" "ec2_ecr_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess"
 }
 
+resource "aws_iam_role_policy_attachment" "ec2_cloudwatch_policy" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 resource "aws_iam_role_policy_attachment" "ec2_ssm_policy" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
@@ -193,6 +198,25 @@ resource "aws_iam_role_policy_attachment" "codebuild_ecr_policy" {
 resource "aws_iam_role_policy_attachment" "codebuild_s3_policy" {
   role       = aws_iam_role.codebuild_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "artifact_bucket_encryption" {
+  bucket = aws_s3_bucket.artifact_bucket.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "artifact_bucket_block" {
+  bucket = aws_s3_bucket.artifact_bucket.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
 # Create IAM Role for CodeDeploy
@@ -348,10 +372,10 @@ resource "aws_iam_role_policy" "codebuild_github_policy" {
           "ecr:BatchCheckLayerAvailability",
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage",
-          "ecr:PutImage",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload"
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage"
         ]
         Effect   = "Allow"
         Resource = "*"
@@ -484,22 +508,9 @@ resource "aws_iam_role_policy_attachment" "codebuild_codestar_attachment" {
 
 resource "aws_iam_role_policy_attachment" "codebuild_ecr_attachment" {
   role       = aws_iam_role.codebuild_service_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
 }
 
-# resource "aws_iam_role_policy" "codebuild_secrets_policy" {
-#   name = "${var.app_name}-codebuild-secrets-policy"
-#   role = aws_iam_role.codebuild_service_role.name
-#
-#   policy = jsonencode({
-#     Version = "2012-10-17",
-#     Statement = [{
-#       Action   = ["secretsmanager:GetSecretValue"],
-#       Effect   = "Allow",
-#       Resource = aws_secretsmanager_secret.github_token.arn
-#     }]
-#   })
-# }
 
 # Create IAM Role for CodePipeline
 resource "aws_iam_role" "codepipeline_role" {
@@ -529,9 +540,35 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
     Statement = [
       {
         Action = [
-          "s3:*",
-          "codebuild:*",
-          "codedeploy:*"
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "s3:GetBucketVersioning",
+          "s3:PutObject",
+          "s3:PutObjectAcl"
+        ]
+        Effect   = "Allow"
+        Resource = [
+          aws_s3_bucket.artifact_bucket.arn,
+          "${aws_s3_bucket.artifact_bucket.arn}/*"
+        ]
+      },
+      {
+        Action = [
+          "codebuild:BatchGetBuilds",
+          "codebuild:StartBuild",
+          "codebuild:BatchGetProjects"
+        ]
+        Effect   = "Allow"
+        Resource = aws_codebuild_project.app_build.arn
+      },
+      {
+        Action = [
+          "codedeploy:CreateDeployment",
+          "codedeploy:GetApplication",
+          "codedeploy:GetApplicationRevision",
+          "codedeploy:GetDeployment",
+          "codedeploy:GetDeploymentConfig",
+          "codedeploy:RegisterApplicationRevision"
         ]
         Effect   = "Allow"
         Resource = "*"
@@ -539,8 +576,17 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
       {
         Action = [
           "codestar-connections:UseConnection"
-        ],
-        Effect   = "Allow",
+        ]
+        Effect   = "Allow"
+        Resource = aws_codestarconnections_connection.github.arn
+      },
+      {
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages"
+        ]
+        Effect   = "Allow"
         Resource = "*"
       }
     ]
