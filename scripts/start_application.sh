@@ -2,9 +2,13 @@
 set -e
 
 echo "Starting application..."
-
-# Hardcode the region to match your Terraform configuration
 AWS_REGION="eu-central-1"
+
+# Override AWS_REGION if it's explicitly set in the environment
+if [ ! -z "$AWS_REGION_OVERRIDE" ]; then
+    AWS_REGION="$AWS_REGION_OVERRIDE"
+    echo "AWS Region overridden to: $AWS_REGION"
+fi
 echo "Using AWS Region: $AWS_REGION"
 
 # Try to determine the ECR repository URI dynamically if not set
@@ -27,8 +31,8 @@ if [ -z "$ECR_REPOSITORY_URI" ]; then
         echo "Determined ECR repository URI: $ECR_REPOSITORY_URI"
     else
         echo "Could not determine AWS account ID. Using default ECR repository URI."
-        # Provide a default URI as fallback - this should be replaced with your actual repository
-        ECR_REPOSITORY_URI="djimy87/ems-app:v1"
+        # Use the specific ECR repository
+        ECR_REPOSITORY_URI="565393040546.dkr.ecr.eu-central-1.amazonaws.com/ems-app"
     fi
 fi
 
@@ -43,6 +47,7 @@ ECR_REPOSITORY_URI=$ECR_REPOSITORY_URI
 DB_USER=root
 DB_PASSWORD=root
 DB_NAME=employees_management_system
+AWS_REGION=$AWS_REGION
 EOF
 
 # Login to AWS ECR (only if we have a valid ECR URI)
@@ -100,6 +105,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      AWS_REGION: ${AWS_REGION}
     restart: unless-stopped
     networks:
       - app-network
