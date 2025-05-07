@@ -16,4 +16,4 @@ unzip awscliv2.zip
 ./aws/install
 
 # Create app directory if it doesn't exist
-mkdir -p /home/ec2-user/employee-management-system
+mkdir -p /home/ec2-user/employees-management-system

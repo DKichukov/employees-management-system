@@ -1,0 +1,59 @@
+#!/bin/bash
+echo "Configuring application..."
+
+# Navigate to the application directory
+cd /home/ec2-user/employees-management-system
+
+# Create docker-compose.prod.yml file if it doesn't exist
+if [ ! -f docker-compose.prod.yml ]; then
+    cat > docker-compose.prod.yml << 'EOF'
+services:
+  postgres:
+    image: postgres:13-alpine
+    container_name: ems-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-root}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-root}
+      POSTGRES_DB: ${DB_NAME:-employees_management_system}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-root} -d ${DB_NAME:-employees_management_system}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  app:
+    image: ${ECR_REPOSITORY_URI:ems-app}
+    container_name: ems-app
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-employees_management_system}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-root}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  postgres-data:
+
+networks:
+  app-network:
+EOF
+fi
+
+# Set proper permissions
+chmod 644 docker-compose.prod.yml
+echo "Application configuration complete"
