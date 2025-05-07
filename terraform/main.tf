@@ -360,7 +360,7 @@ resource "aws_iam_role_policy" "codebuild_github_policy" {
           "s3:GetBucketAcl",
           "s3:GetBucketLocation"
         ]
-        Effect   = "Allow"
+        Effect = "Allow"
         Resource = [
           aws_s3_bucket.artifact_bucket.arn,
           "${aws_s3_bucket.artifact_bucket.arn}/*"
@@ -490,11 +490,11 @@ resource "aws_iam_role_policy" "codebuild_codestar_policy" {
     Version = "2012-10-17",
     Statement = [
       {
-        Effect   = "Allow",
-         Action = [
-                  "codestar-connections:UseConnection",
-                  "codestar-connections:GetConnection"
-                ],
+        Effect = "Allow",
+        Action = [
+          "codestar-connections:UseConnection",
+          "codestar-connections:GetConnection"
+        ],
         Resource = aws_codestarconnections_connection.github.arn
       }
     ]
@@ -546,7 +546,7 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
           "s3:PutObject",
           "s3:PutObjectAcl"
         ]
-        Effect   = "Allow"
+        Effect = "Allow"
         Resource = [
           aws_s3_bucket.artifact_bucket.arn,
           "${aws_s3_bucket.artifact_bucket.arn}/*"
