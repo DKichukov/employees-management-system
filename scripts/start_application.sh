@@ -27,7 +27,7 @@ fi
 
 # If region is still empty, check environment variables
 if [ -z "$AWS_REGION" ]; then
-    AWS_REGION=${AWS_DEFAULT_REGION:-eu-central-1}
+    AWS_REGION=${AWS_DEFAULT_REGION:-us-east-1}
 fi
 
 echo "Using AWS Region: $AWS_REGION"
