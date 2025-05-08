@@ -4,7 +4,7 @@ cd /home/ec2-user/employees-management-system
 
 # Stop containers if docker-compose file exists
 if [ -f docker-compose.prod.yml ]; then
-  docker compose -f docker-compose.prod.yml down || true
+  docker-compose -f docker-compose.prod.yml down || true
 fi
 
 # Clean up unused Docker resources

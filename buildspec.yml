@@ -122,11 +122,11 @@ phases:
         cat > scripts/stop_application.sh << 'EOL'
         #!/bin/bash
         echo "Stopping application..."
-        cd /home/ec2-user/employee-management-system
+        cd /home/ec2-user/employees-management-system
 
         # Stop containers if docker-compose file exists
         if [ -f docker-compose.prod.yml ]; then
-          docker compose -f docker-compose.prod.yml down || true
+          docker-compose -f docker-compose.prod.yml down || true
         fi
 
         # Clean up unused Docker resources
@@ -174,7 +174,7 @@ phases:
         echo "Using ECR repository: $ECR_REPOSITORY_URI"
 
         # Create .env file for docker-compose
-        cat > /home/ec2-user/employee-management-system/.env << EOF
+        cat > /home/ec2-user/employees-management-system/.env << EOF
         ECR_REPOSITORY_URI=$ECR_REPOSITORY_URI
         DB_USER=root
         DB_PASSWORD=root
@@ -194,7 +194,7 @@ phases:
 
         # Start Docker containers
         echo "Starting containers..."
-        docker compose -f docker-compose.prod.yml up -d
+        docker-compose -f docker-compose.prod.yml up -d
 
         echo "Application started successfully"
         EOL

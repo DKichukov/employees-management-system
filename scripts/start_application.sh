@@ -169,11 +169,11 @@ fi
 
 # Start containers
 echo "Starting containers..."
-if docker compose -f docker-compose.prod.yml up -d; then
+if docker-compose -f docker-compose.prod.yml up -d; then
     echo "Application started successfully"
     docker ps
 else
     echo "ERROR: Failed to start containers"
-    docker compose -f docker-compose.prod.yml logs
+    docker-compose -f docker-compose.prod.yml logs
     exit 1
 fi
