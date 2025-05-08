@@ -5,38 +5,35 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: root
-      POSTGRES_DB: employees_management_system
+      POSTGRES_USER: ${DB_USER:-root}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-root}
+      POSTGRES_DB: ${DB_NAME:-employees_management_system}
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      #- ./postgres.conf:/etc/postgresql/postgresql.conf
-    #command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U root -d employees_management_system" ]
-      interval: 5s
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-root} -d ${DB_NAME:-employees_management_system}" ]
+      interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     networks:
       - app-network
 
   app:
-    image: djimy87/ems-app:v1
+    image: ${ECR_REPOSITORY_URI}:latest
     container_name: ems-app
-    build:
-      context: .
-      dockerfile: Dockerfile
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/employees_management_system
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: root
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-employees_management_system}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-root}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+    restart: unless-stopped
     networks:
       - app-network
 
@@ -45,4 +42,3 @@ volumes:
 
 networks:
   app-network:
-
