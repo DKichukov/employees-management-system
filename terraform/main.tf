@@ -4,6 +4,22 @@ provider "aws" {
 
 provider "random" {}
 
+# RSA key of size 4096 bits
+resource "tls_private_key" "rsa_4096" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "aws_key_pair" "key_pair" {
+  key_name   = var.ssh_key_name
+  public_key = tls_private_key.rsa_4096.public_key_openssh
+}
+
+resource "local_file" "private_key" {
+  content  = tls_private_key.rsa_4096.private_key_pem
+  filename = "${var.ssh_key_name}.pem"
+}
+
 # Create ECR Repository for the application
 resource "aws_ecr_repository" "app_ecr_repo" {
   name = var.app_name
@@ -276,7 +292,7 @@ resource "aws_iam_role_policy_attachment" "codedeploy_policy" {
 
 # Create EC2 Instance with EBS volume for PostgreSQL data
 resource "aws_instance" "app_instance" {
-  ami                    = "ami-009082a6cd90ccd0e" # Amazon Linux 2 AMI (adjust for your region)
+  ami                    = "ami-0f88e80871fd81e91" # Amazon Linux 2 AMI (adjust for your region)
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.app_subnet.id
   vpc_security_group_ids = [aws_security_group.app_sg.id]
