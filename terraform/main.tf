@@ -325,8 +325,8 @@ resource "aws_instance" "app_instance" {
               chmod +x /usr/local/bin/docker-compose
 
               # Create app directory
-              mkdir -p /home/ec2-user/employee-management-system
-              chown -R ec2-user:ec2-user /home/ec2-user/employee-management-system
+              mkdir -p /home/ec2-user/employees-management-system
+              chown -R ec2-user:ec2-user /home/ec2-user/employees-management-system
               EOF
 
   tags = {

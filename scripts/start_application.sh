@@ -5,43 +5,54 @@ echo "Starting application..."
 
 # Define application directory and create if it doesn't exist
 APP_DIR="/home/ec2-user/employees-management-system"
-mkdir -p "$APP_DIR"
+sudo mkdir -p "$APP_DIR"
+sudo chown ec2-user:ec2-user "$APP_DIR"
 
 # Determine AWS region with fallbacks
 AWS_REGION=""
 
-# Attempt to get region from instance metadata with IMDSv2 support
-TOKEN=""
-if command -v curl &>/dev/null; then
-    # Try to get IMDSv2 token
-    TOKEN=$(curl -s -f -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null || echo "")
+# First try environment variables
+if [ -z "$AWS_REGION" ]; then
+    AWS_REGION=${AWS_DEFAULT_REGION:-}
+fi
+
+# If still empty, try instance metadata
+if [ -z "$AWS_REGION" ] && command -v curl &>/dev/null; then
+    # Try IMDSv2 first
+    TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null || true)
 
     if [ -n "$TOKEN" ]; then
-        # Use IMDSv2
-        AWS_REGION=$(curl -s -f -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "")
+        AWS_REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || true)
     else
         # Fall back to IMDSv1
-        AWS_REGION=$(curl -s -f http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "")
+        AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || true)
     fi
 fi
 
-# If region is still empty, check environment variables
+# Final fallback
 if [ -z "$AWS_REGION" ]; then
-    AWS_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    AWS_REGION="us-east-1"
 fi
 
 echo "Using AWS Region: $AWS_REGION"
 
 # Get AWS account ID
 AWS_ACCOUNT_ID=""
-if [ -n "$TOKEN" ]; then
-    # Try IMDSv2
-    AWS_ACCOUNT_ID=$(curl -s -f -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document 2>/dev/null | grep -o '"accountId" : "[^"]*' | cut -d'"' -f4 || echo "")
+
+# Try AWS CLI first (most reliable if configured)
+if command -v aws &>/dev/null; then
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || true)
 fi
 
-# If account ID is still empty, try AWS CLI
-if [ -z "$AWS_ACCOUNT_ID" ]; then
-    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")
+# If still empty, try instance metadata
+if [ -z "$AWS_ACCOUNT_ID" ] && command -v curl &>/dev/null; then
+    if [ -n "$TOKEN" ]; then
+        AWS_ACCOUNT_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/dynamic/instance-identity/document 2>/dev/null | \
+                        grep -o '"accountId" : "[^"]*' | cut -d'"' -f4 || true)
+    else
+        AWS_ACCOUNT_ID=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document 2>/dev/null | \
+                        grep -o '"accountId" : "[^"]*' | cut -d'"' -f4 || true)
+    fi
 fi
 
 # Determine ECR repository URI
@@ -77,13 +88,13 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${DB_USER:-root}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-root}
-      POSTGRES_DB: ${DB_NAME:-employees_management_system}
+      POSTGRES_USER: \${DB_USER:-root}
+      POSTGRES_PASSWORD: \${DB_PASSWORD:-root}
+      POSTGRES_DB: \${DB_NAME:-employees_management_system}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER:-root} -d ${DB_NAME:-employees_management_system}" ]
+      test: [ "CMD-SHELL", "pg_isready -U \${DB_USER:-root} -d \${DB_NAME:-employees_management_system}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -100,9 +111,9 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-employees_management_system}
-      SPRING_DATASOURCE_USERNAME: ${DB_USER:-root}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/\${DB_NAME:-employees_management_system}
+      SPRING_DATASOURCE_USERNAME: \${DB_USER:-root}
+      SPRING_DATASOURCE_PASSWORD: \${DB_PASSWORD:-root}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
     restart: unless-stopped
@@ -116,6 +127,10 @@ networks:
   app-network:
 EOF
 fi
+
+# Set proper permissions
+sudo chown ec2-user:ec2-user "$APP_DIR/docker-compose.prod.yml"
+sudo chmod 644 "$APP_DIR/docker-compose.prod.yml"
 
 # Go to application directory
 cd "$APP_DIR"
